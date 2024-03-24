@@ -22,114 +22,141 @@ internal sealed class JUnitTestResultXmlBuilder : ITestResultXmlBuilder<JUnitTes
     //-------------------------------------------------------------------------
     public void Build()
     {
-        foreach (JUnitTestSuite testSuite in _test.TestSuites)
+        try
         {
-            this.AddTestSuite(testSuite);
+            foreach (JUnitTestSuite testSuite in _test.TestSuites)
+            {
+                this.AddTestSuite(testSuite);
+            }
+        }
+        catch (Exception ex)
+        {
+            string detailedError = $"Error occurred while building JUnit XML: {ex.Message}";
+            throw new Exception(detailedError, ex);
+
         }
     }
     //-------------------------------------------------------------------------
     private void AddTestSuite(JUnitTestSuite testSuite)
     {
-        var xTestSuite = new XElement("testsuite");
-
-        xTestSuite.Add(new XAttribute("name"    , testSuite.Name!));
-        xTestSuite.Add(new XAttribute("hostname", testSuite.HostName ?? "-"));
-        xTestSuite.Add(new XAttribute("package" , "not available"));
-        xTestSuite.Add(new XAttribute("id"      , testSuite.Id!));
-
-        xTestSuite.Add(new XElement("properties"));
-
-        foreach (JUnitTestCase testCase in testSuite.TestCases)
+        try
         {
-            this.AddTestCase(xTestSuite, testCase);
-        }
+            var xTestSuite = new XElement("testsuite");
 
-        xTestSuite.Add(new XAttribute("tests"    , testSuite.TestCount));
-        xTestSuite.Add(new XAttribute("failures" , testSuite.FailureCount!));
-        xTestSuite.Add(new XAttribute("errors"   , testSuite.ErrorCount!));
-        xTestSuite.Add(new XAttribute("skipped"  , testSuite.SkippedCount!));
-        xTestSuite.Add(new XAttribute("time"     , testSuite.TimeInSeconds.ToJUnitTime()));
-        xTestSuite.Add(new XAttribute("timestamp", testSuite.TimeStamp.ToJUnitDateTime()));
+            xTestSuite.Add(new XAttribute("name", testSuite.Name!));
+            xTestSuite.Add(new XAttribute("hostname", testSuite.HostName ?? "-"));
+            xTestSuite.Add(new XAttribute("package", "not available"));
+            xTestSuite.Add(new XAttribute("id", testSuite.Id!));
 
-        if (_junitTestSuiteSystemOutStringBuilder?.Length > 0)
-        {
-            xTestSuite.Add(new XElement("system-out", _junitTestSuiteSystemOutStringBuilder.ToString().Trim()));
-            _junitTestSuiteSystemOutStringBuilder.Clear();
-        }
-        else
-        {
-            xTestSuite.Add(new XElement("system-out"));
-        }
+            xTestSuite.Add(new XElement("properties"));
 
-        if (_junitTestSuiteSystemErrStringBuilder?.Length > 0)
-        {
-            xTestSuite.Add(new XElement("system-err", _junitTestSuiteSystemErrStringBuilder.ToString().Trim()));
-            _junitTestSuiteSystemErrStringBuilder.Clear();
-        }
-        else
-        {
-            xTestSuite.Add(new XElement("system-err"));
-        }
+            foreach (JUnitTestCase testCase in testSuite.TestCases)
+            {
+                this.AddTestCase(xTestSuite, testCase);
+            }
 
-        _xJUnit.Add(xTestSuite);
+            xTestSuite.Add(new XAttribute("tests", testSuite.TestCount));
+            xTestSuite.Add(new XAttribute("failures", testSuite.FailureCount!));
+            xTestSuite.Add(new XAttribute("errors", testSuite.ErrorCount!));
+            xTestSuite.Add(new XAttribute("skipped", testSuite.SkippedCount!));
+            xTestSuite.Add(new XAttribute("time", testSuite.TimeInSeconds.ToJUnitTime()));
+            xTestSuite.Add(new XAttribute("timestamp", testSuite.TimeStamp.ToJUnitDateTime()));
+
+            if (_junitTestSuiteSystemOutStringBuilder?.Length > 0)
+            {
+                xTestSuite.Add(new XElement("system-out", _junitTestSuiteSystemOutStringBuilder.ToString().Trim()));
+                _junitTestSuiteSystemOutStringBuilder.Clear();
+            }
+            else
+            {
+                xTestSuite.Add(new XElement("system-out"));
+            }
+
+            if (_junitTestSuiteSystemErrStringBuilder?.Length > 0)
+            {
+                xTestSuite.Add(new XElement("system-err", _junitTestSuiteSystemErrStringBuilder.ToString().Trim()));
+                _junitTestSuiteSystemErrStringBuilder.Clear();
+            }
+            else
+            {
+                xTestSuite.Add(new XElement("system-err"));
+            }
+
+            _xJUnit.Add(xTestSuite);
+
+        }
+        catch (Exception ex)
+        {
+            string detailedError = $"Error in AddTestSuite for '{testSuite.Name}': {ex.Message}";
+            throw new Exception(detailedError, ex);
+        }
     }
     //-------------------------------------------------------------------------
     private void AddTestCase(XElement xTestSuite, JUnitTestCase testCase)
     {
-        var xTestCase = new XElement("testcase");
-        xTestSuite.Add(xTestCase);
-
-        xTestCase.Add(new XAttribute("name"     , testCase.Name!));
-        xTestCase.Add(new XAttribute("classname", testCase.ClassName!));
-        xTestCase.Add(new XAttribute("time"     , testCase.TimeInSeconds.ToJUnitTime()));
-
-        if (testCase.Skipped)
+        try
         {
-            xTestCase.Add(new XElement("skipped"));
+            var xTestCase = new XElement("testcase");
+            xTestSuite.Add(xTestCase);
 
-            if (Globals.JUnitTestCaseStatusSkipped is not null)
+            xTestCase.Add(new XAttribute("name", testCase.Name!));
+            xTestCase.Add(new XAttribute("classname", testCase.ClassName!));
+            xTestCase.Add(new XAttribute("time", testCase.TimeInSeconds.ToJUnitTime()));
+
+            if (testCase.Skipped)
             {
-                xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusSkipped));
+                xTestCase.Add(new XElement("skipped"));
+
+                if (Globals.JUnitTestCaseStatusSkipped is not null)
+                {
+                    xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusSkipped));
+                }
             }
-        }
-        else if (testCase.Error != null)
-        {
-            string? failureContent = Globals.JUnitErrorMessageRepeatCData
-                ? $"{testCase.Error.Message}\n{testCase.Error.StackTrace?.TrimEnd()}"
-                : testCase.Error.StackTrace?.TrimEnd();
-
-            XElement xFailure = new ("failure",
-                new XAttribute("message", testCase.Error.Message!),
-                new XAttribute("type"   , testCase.Error.Type!)
-            );
-
-            if (failureContent is not null)
+            else if (testCase.Error != null)
             {
-                xFailure.Add(new XCData(failureContent));
+                string? failureContent = Globals.JUnitErrorMessageRepeatCData
+                    ? $"{testCase.Error.Message}\n{testCase.Error.StackTrace?.TrimEnd()}"
+                    : testCase.Error.StackTrace?.TrimEnd();
+
+                XElement xFailure = new("failure",
+                    new XAttribute("message", testCase.Error.Message!),
+                    new XAttribute("type", testCase.Error.Type!)
+                );
+
+                if (failureContent is not null)
+                {
+                    xFailure.Add(new XCData(failureContent));
+                }
+
+                xTestCase.Add(xFailure);
+                xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusFailure));
+            }
+            else
+            {
+                xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusSuccess));
             }
 
-            xTestCase.Add(xFailure);
-            xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusFailure));
+            if (testCase.SystemErr != null)
+            {
+                xTestCase.Add(new XElement("system-err", testCase.SystemErr));
+
+                _junitTestSuiteSystemErrStringBuilder ??= new StringBuilder();
+                _junitTestSuiteSystemErrStringBuilder.AppendLine(testCase.SystemErr);
+            }
+
+            if (testCase.SystemOut != null)
+            {
+                xTestCase.Add(new XElement("system-out", testCase.SystemOut));
+
+                _junitTestSuiteSystemOutStringBuilder ??= new StringBuilder();
+                _junitTestSuiteSystemOutStringBuilder.AppendLine(testCase.SystemOut);
+            }
+
         }
-        else
+        catch (Exception ex)
         {
-            xTestCase.Add(new XAttribute("status", Globals.JUnitTestCaseStatusSuccess));
-        }
-
-        if (testCase.SystemErr != null)
-        {
-            xTestCase.Add(new XElement("system-err", testCase.SystemErr));
-
-            _junitTestSuiteSystemErrStringBuilder ??= new StringBuilder();
-            _junitTestSuiteSystemErrStringBuilder.AppendLine(testCase.SystemErr);
-        }
-
-        if (testCase.SystemOut != null)
-        {
-            xTestCase.Add(new XElement("system-out", testCase.SystemOut));
-
-            _junitTestSuiteSystemOutStringBuilder ??= new StringBuilder();
-            _junitTestSuiteSystemOutStringBuilder.AppendLine(testCase.SystemOut);
+            string detailedError = $"Error in AddTestCase for '{testCase.Name}': {ex.Message}";
+            throw new Exception(detailedError, ex);
         }
     }
 }
